@@ -7,6 +7,7 @@
 
 import sqlite3
 import pandas as pd
+import os
 from datetime import datetime
 
 def export_all_tables_to_excel(output_file=None):
@@ -280,5 +281,62 @@ def main():
     
     print("\n🎉 Экспорт завершен!")
 
+def export_unified_table():
+    """Экспорт итоговой таблицы с разделителями"""
+    try:
+        conn = sqlite3.connect('unified_pricelists.db')
+        cursor = conn.cursor()
+        
+        # Получаем данные из итоговой таблицы
+        cursor.execute("SELECT * FROM all_pricelists ORDER BY id")
+        rows = cursor.fetchall()
+        
+        if not rows:
+            print("❌ Итоговая таблица пуста")
+            return
+        
+        # Получаем названия столбцов
+        cursor.execute("PRAGMA table_info(all_pricelists)")
+        columns_info = cursor.fetchall()
+        column_names = [col[1] for col in columns_info]
+        
+        # Создаем DataFrame
+        df = pd.DataFrame(rows, columns=column_names)
+        
+        # Создаем имя файла
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"unified_pricelists_export_{timestamp}.xlsx"
+        
+        print(f"📤 Экспорт итоговой таблицы в файл: {filename}")
+        print(f"📊 Найдено строк: {len(df):,}")
+        
+        # Создаем Excel файл
+        with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+            # Основной лист с данными
+            df.to_excel(writer, sheet_name='Все_данные', index=False)
+            
+            # Лист со статистикой по разделам
+            separators_df = df[df['section_separator'].notna()][['section_separator']].drop_duplicates()
+            separators_df.to_excel(writer, sheet_name='Разделы', index=False)
+            
+            # Лист со статистикой по источникам
+            source_stats = df[df['section_separator'].isna()].groupby(['source_file', 'sheet_name']).size().reset_index(name='Количество_записей')
+            source_stats.to_excel(writer, sheet_name='Статистика_по_источникам', index=False)
+        
+        # Получаем размер файла
+        file_size = os.path.getsize(filename) / (1024 * 1024)  # MB
+        print(f"✅ Экспорт завершен! Файл: {filename}")
+        print(f"📁 Размер файла: {file_size:.1f} MB")
+        
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ Ошибка экспорта итоговой таблицы: {e}")
+
 if __name__ == "__main__":
     main()
+    
+    # Дополнительный экспорт итоговой таблицы
+    print("\n" + "=" * 50)
+    print("4️⃣ Экспорт итоговой таблицы с разделителями...")
+    export_unified_table()

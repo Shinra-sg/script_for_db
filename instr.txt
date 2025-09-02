@@ -1,0 +1,178 @@
+ОСНОВНЫЕ КОМАНДЫ:
+================
+
+1. ОБЪЕДИНЕНИЕ ПРАЙС-ЛИСТОВ В БАЗУ ДАННЫХ:
+   python3 merge_pricelists.py
+   
+   Описание: Читает все файлы из папки doc/ и создает базу данных unified_pricelists.db
+   Результат: 
+   - База данных с отдельными таблицами для каждого файла/листа
+   - Итоговая таблица all_pricelists с умным объединением заголовков
+   - Разделители между данными из разных источников
+
+2. ПРОСМОТР ДАННЫХ:
+   python3 view_data.py
+   
+   Описание: Показывает структуру базы данных и примеры данных
+   Результат:
+   - Список всех таблиц
+   - Метаданные прайс-листов
+   - Примеры данных из таблиц
+   - Просмотр итоговой таблицы с разделителями
+
+3. ЭКСПОРТ В EXCEL:
+   python3 export_to_excel.py
+   
+   Описание: Экспортирует данные из базы в Excel файлы
+   Результат:
+   - Экспорт всех таблиц в один файл
+   - Экспорт конкретного файла
+   - Экспорт конкретной таблицы
+   - Экспорт итоговой таблицы с разделителями
+
+4. БЫСТРЫЙ ЗАПУСК:
+   ./run.sh
+   
+   Описание: Выполняет все основные операции последовательно
+   Результат: Полная обработка от объединения до экспорта
+
+ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ:
+======================
+
+5. ПРОСМОТР СТРУКТУРЫ БАЗЫ ДАННЫХ:
+   sqlite3 unified_pricelists.db ".tables"
+   
+   Описание: Показывает все таблицы в базе данных
+
+6. ПРОСМОТР СТРУКТУРЫ КОНКРЕТНОЙ ТАБЛИЦЫ:
+   sqlite3 unified_pricelists.db ".schema table_name"
+   
+   Описание: Показывает структуру указанной таблицы
+   Пример: sqlite3 unified_pricelists.db ".schema all_pricelists"
+
+7. ПРОСМОТР ДАННЫХ ИЗ КОНКРЕТНОЙ ТАБЛИЦЫ:
+   sqlite3 unified_pricelists.db "SELECT * FROM table_name LIMIT 10;"
+   
+   Описание: Показывает первые 10 строк из указанной таблицы
+   Пример: sqlite3 unified_pricelists.db "SELECT * FROM all_pricelists LIMIT 10;"
+
+8. ПОИСК ДАННЫХ ПО ИСТОЧНИКУ:
+   sqlite3 unified_pricelists.db "SELECT * FROM all_pricelists WHERE source_file LIKE '%EKF%' LIMIT 5;"
+   
+   Описание: Ищет данные из конкретного файла
+
+9. ПОДСЧЕТ ЗАПИСЕЙ В ТАБЛИЦЕ:
+   sqlite3 unified_pricelists.db "SELECT COUNT(*) FROM table_name;"
+   
+   Описание: Показывает количество записей в таблице
+   Пример: sqlite3 unified_pricelists.db "SELECT COUNT(*) FROM all_pricelists;"
+
+10. ПРОСМОТР РАЗДЕЛИТЕЛЕЙ:
+    sqlite3 unified_pricelists.db "SELECT DISTINCT section_separator FROM all_pricelists WHERE section_separator IS NOT NULL;"
+    
+    Описание: Показывает все разделители между источниками данных
+
+11. СТАТИСТИКА ПО ИСТОЧНИКАМ:
+    sqlite3 unified_pricelists.db "SELECT source_file, sheet_name, COUNT(*) as records FROM all_pricelists WHERE section_separator IS NULL GROUP BY source_file, sheet_name;"
+    
+    Описание: Показывает количество записей по каждому источнику
+
+12. ПОИСК ПО УНИФИЦИРОВАННЫМ ЗАГОЛОВКАМ:
+    sqlite3 unified_pricelists.db "SELECT наименование, цена, артикул FROM all_pricelists WHERE наименование IS NOT NULL LIMIT 10;"
+    
+    Описание: Ищет данные по унифицированным заголовкам
+
+13. УСТАНОВКА ЗАВИСИМОСТЕЙ:
+    pip install -r requirements.txt
+    
+    Описание: Устанавливает необходимые Python библиотеки
+
+14. ПРОСМОТР ЛОГОВ:
+    cat merge_pricelists.log
+    
+    Описание: Показывает лог выполнения последней операции
+
+15. ОЧИСТКА ПРОЕКТА:
+    rm -f *.xlsx *.log
+    rm -rf __pycache__
+    
+    Описание: Удаляет временные и экспортированные файлы
+
+СПЕЦИАЛЬНЫЕ ФУНКЦИИ:
+===================
+
+16. ЭКСПОРТ ТОЛЬКО ИТОГОВОЙ ТАБЛИЦЫ:
+    python3 -c "from export_to_excel import export_unified_table; export_unified_table()"
+    
+    Описание: Экспортирует только итоговую таблицу с разделителями
+
+17. ПРОСМОТР ТОЛЬКО ИТОГОВОЙ ТАБЛИЦЫ:
+    python3 -c "from view_data import view_unified_table; view_unified_table()"
+    
+    Описание: Показывает только итоговую таблицу
+
+18. ПРОВЕРКА РАЗМЕРА ФАЙЛОВ:
+    du -sh *
+    
+    Описание: Показывает размер всех файлов в проекте
+
+19. ПРОВЕРКА СТАТУСА GIT:
+    git status
+    
+    Описание: Показывает статус репозитория Git
+
+20. ОТПРАВКА В GIT:
+    git add .
+    git commit -m "Описание изменений"
+    git push origin main
+    
+    Описание: Отправляет изменения в репозиторий
+
+СТРУКТУРА ПРОЕКТА:
+=================
+
+doc/                          - Исходные прайс-листы (Excel, CSV файлы)
+merge_pricelists.py          - Основной скрипт объединения
+view_data.py                 - Скрипт просмотра данных
+export_to_excel.py           - Скрипт экспорта в Excel
+unified_pricelists.db        - База данных SQLite
+merge_pricelists.log         - Лог файл
+requirements.txt             - Зависимости Python
+run.sh                      - Скрипт быстрого запуска
+README.md                   - Документация
+ИНСТРУКЦИЯ.md               - Инструкция на русском
+.gitignore                  - Исключения для Git
+
+ОСОБЕННОСТИ:
+============
+
+- Умное объединение заголовков (Номенклатура = Название = Наименование)
+- Разделители между данными из разных источников
+- Автоматическое определение заголовков таблиц
+- Обработка различных форматов Excel и CSV
+- Создание отдельных таблиц для каждого файла/листа
+- Итоговая таблица со всеми данными
+
+ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ:
+=====================
+
+# Полная обработка прайс-листов
+./run.sh
+
+# Только объединение в базу данных
+python3 merge_pricelists.py
+
+# Просмотр результатов
+python3 view_data.py
+
+# Экспорт в Excel
+python3 export_to_excel.py
+
+# Поиск товара по названию
+sqlite3 unified_pricelists.db "SELECT * FROM all_pricelists WHERE наименование LIKE '%светильник%' LIMIT 5;"
+
+# Поиск по цене
+sqlite3 unified_pricelists.db "SELECT наименование, цена FROM all_pricelists WHERE цена IS NOT NULL AND цена != '' LIMIT 10;"
+
+# Статистика по файлам
+sqlite3 unified_pricelists.db "SELECT source_file, COUNT(*) as total_records FROM all_pricelists WHERE section_separator IS NULL GROUP BY source_file ORDER BY total_records DESC;"

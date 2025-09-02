@@ -214,6 +214,89 @@ def main():
     # Пример поиска по конкретному файлу
     print("\n" + "=" * 60)
     search_by_source("ФЕРОН прайс 07.08.25.csv", 3)
+    
+    # Пример просмотра итоговой таблицы
+    print("\n" + "=" * 60)
+    print("🔍 ПРИМЕР ПРОСМОТРА ИТОГОВОЙ ТАБЛИЦЫ:")
+    view_unified_table()
+
+def view_unified_table():
+    """Просмотр итоговой таблицы со всеми данными с разделителями"""
+    try:
+        conn = sqlite3.connect('unified_pricelists.db')
+        cursor = conn.cursor()
+        
+        # Получаем информацию о таблице
+        cursor.execute("PRAGMA table_info(all_pricelists)")
+        columns_info = cursor.fetchall()
+        
+        if not columns_info:
+            print("❌ Итоговая таблица all_pricelists не найдена")
+            return
+        
+        print(f"\n📊 Итоговая таблица all_pricelists (с умным объединением заголовков):")
+        print(f"   Столбцов: {len(columns_info)}")
+        
+        # Показываем структуру таблицы
+        print(f"\n📋 Структура таблицы:")
+        for col in columns_info:
+            print(f"   • {col[1]} ({col[2]})")
+        
+        # Получаем количество записей
+        cursor.execute("SELECT COUNT(*) FROM all_pricelists")
+        total_rows = cursor.fetchone()[0]
+        print(f"\n📈 Всего записей: {total_rows}")
+        
+        # Показываем разделители (заголовки секций)
+        print(f"\n🗂️  Разделы данных:")
+        cursor.execute("SELECT DISTINCT section_separator FROM all_pricelists WHERE section_separator IS NOT NULL")
+        separators = cursor.fetchall()
+        
+        for i, separator in enumerate(separators, 1):
+            print(f"   {i}. {separator[0]}")
+        
+        # Показываем первые 15 записей с разделителями
+        print(f"\n🔍 Первые 15 записей (с разделителями):")
+        cursor.execute("""
+            SELECT source_file, sheet_name, section_separator, 
+                   CASE 
+                       WHEN section_separator IS NOT NULL THEN '--- РАЗДЕЛИТЕЛЬ ---'
+                       ELSE 'Данные'
+                   END as record_type
+            FROM all_pricelists 
+            ORDER BY id 
+            LIMIT 15
+        """)
+        rows = cursor.fetchall()
+        
+        if rows:
+            # Получаем названия столбцов
+            column_names = [description[0] for description in cursor.description]
+            
+            # Создаем DataFrame для красивого вывода
+            df = pd.DataFrame(rows, columns=column_names)
+            print(df.to_string(index=False))
+        else:
+            print("   Нет данных для отображения")
+            
+        # Показываем статистику по источникам
+        print(f"\n📊 Статистика по источникам:")
+        cursor.execute("""
+            SELECT source_file, sheet_name, COUNT(*) as records_count
+            FROM all_pricelists 
+            WHERE section_separator IS NULL
+            GROUP BY source_file, sheet_name
+            ORDER BY source_file, sheet_name
+        """)
+        stats = cursor.fetchall()
+        
+        for stat in stats:
+            print(f"   • {stat[0]} ({stat[1]}): {stat[2]} записей")
+            
+        conn.close()
+            
+    except Exception as e:
+        print(f"❌ Ошибка просмотра итоговой таблицы: {e}")
 
 if __name__ == "__main__":
     main()

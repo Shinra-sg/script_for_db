@@ -67,7 +67,7 @@ class PricelistMerger:
             raise
     
     def create_unified_table(self):
-        """Создание итоговой таблицы со всеми данными"""
+        """Создание итоговой таблицы со всеми данными с умным объединением заголовков"""
         try:
             # Сначала создаем базовую структуру
             create_sql = """
@@ -76,61 +76,112 @@ class PricelistMerger:
                 source_file TEXT NOT NULL,
                 sheet_name TEXT,
                 source_row INTEGER,
+                section_separator TEXT,
                 processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
             self.cursor.execute(create_sql)
             self.conn.commit()
-            logger.info("Итоговая таблица all_pricelists создана")
+            logger.info("Итоговая таблица all_pricelists создана с базовой структурой")
         except Exception as e:
             logger.error(f"Ошибка создания итоговой таблицы: {e}")
             raise
     
     def add_column_to_unified_table(self, column_name):
-        """Добавление столбца в итоговую таблицу"""
+        """Добавление столбца в итоговую таблицу с умным объединением"""
         try:
-            clean_column = self.clean_column_name(column_name)
-            self.cursor.execute(f"ALTER TABLE all_pricelists ADD COLUMN {clean_column} TEXT")
-            self.conn.commit()
+            # Используем умную логику объединения заголовков
+            unified_column = self.get_unified_column_name(column_name)
+            clean_column = self.clean_column_name(unified_column)
+            
+            # Проверяем, существует ли уже такой столбец
+            self.cursor.execute("PRAGMA table_info(all_pricelists)")
+            existing_columns = [row[1] for row in self.cursor.fetchall()]
+            
+            if clean_column not in existing_columns:
+                self.cursor.execute(f"ALTER TABLE all_pricelists ADD COLUMN {clean_column} TEXT")
+                self.conn.commit()
+                logger.info(f"  Добавлен унифицированный столбец: {column_name} -> {clean_column}")
+            else:
+                logger.info(f"  Столбец {clean_column} уже существует (объединен с {column_name})")
+                
         except Exception as e:
-            # Столбец уже существует, игнорируем ошибку
-            pass
+            logger.error(f"Ошибка добавления столбца {column_name}: {e}")
+            # Пытаемся добавить с оригинальным названием
+            try:
+                clean_column = self.clean_column_name(column_name)
+                self.cursor.execute(f"ALTER TABLE all_pricelists ADD COLUMN {clean_column} TEXT")
+                self.conn.commit()
+            except:
+                pass
     
     def insert_to_unified_table(self, df, file_path, sheet_name):
-        """Вставка данных в итоговую таблицу"""
+        """Вставка данных в итоговую таблицу с разделителями между таблицами"""
         try:
             # Добавляем недостающие столбцы
             for col in df.columns:
                 self.add_column_to_unified_table(col)
+
+            # Сначала добавляем разделитель для новой таблицы
+            separator_data = {
+                'source_file': os.path.basename(file_path),
+                'sheet_name': sheet_name,
+                'source_row': 0,
+                'section_separator': f"=== {os.path.basename(file_path)} ({sheet_name}) ==="
+            }
             
+            # Добавляем пустые значения для всех остальных столбцов
+            self.cursor.execute("PRAGMA table_info(all_pricelists)")
+            existing_columns = [row[1] for row in self.cursor.fetchall()]
+            
+            for col in existing_columns:
+                if col not in separator_data:
+                    separator_data[col] = None
+            
+            # Вставляем разделитель
+            columns = list(separator_data.keys())
+            placeholders = ['?' for _ in separator_data]
+            insert_sql = f"""
+            INSERT INTO all_pricelists ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+            """
+            self.cursor.execute(insert_sql, list(separator_data.values()))
+
             # Вставляем данные
             for index, row in df.iterrows():
                 # Подготавливаем данные для вставки
                 insert_data = {
                     'source_file': os.path.basename(file_path),
                     'sheet_name': sheet_name,
-                    'source_row': index + 1
+                    'source_row': index + 1,
+                    'section_separator': None  # Обычные строки не имеют разделителя
                 }
-                
-                # Добавляем данные из строки
+
+                # Добавляем данные из строки с умным объединением заголовков
                 for col in df.columns:
-                    clean_col = self.clean_column_name(col)
+                    unified_col = self.get_unified_column_name(col)
+                    clean_col = self.clean_column_name(unified_col)
                     insert_data[clean_col] = str(row[col]) if pd.notna(row[col]) else None
-                
+
+                # Добавляем пустые значения для остальных столбцов
+                for col in existing_columns:
+                    if col not in insert_data:
+                        insert_data[col] = None
+
                 # Формируем SQL запрос
                 columns = list(insert_data.keys())
                 placeholders = ['?' for _ in insert_data]
-                
+
                 insert_sql = f"""
                 INSERT INTO all_pricelists ({', '.join(columns)})
                 VALUES ({', '.join(placeholders)})
                 """
-                
+
                 self.cursor.execute(insert_sql, list(insert_data.values()))
-            
+
             self.conn.commit()
-            logger.info(f"  Данные добавлены в итоговую таблицу all_pricelists")
-            
+            logger.info(f"  Данные добавлены в итоговую таблицу all_pricelists с разделителем")
+
         except Exception as e:
             logger.error(f"Ошибка добавления данных в итоговую таблицу: {e}")
             raise
@@ -414,7 +465,151 @@ class PricelistMerger:
             existing_columns.add(column_name)
         
         return column_name
-    
+
+    def get_unified_column_name(self, column_name):
+        """Получение унифицированного названия столбца для объединения похожих заголовков"""
+        if column_name is None:
+            return "unnamed_column"
+        
+        # Нормализуем название для сравнения
+        normalized = str(column_name).lower().strip()
+        
+        # Словарь синонимов для объединения похожих заголовков
+        synonyms_map = {
+            # Названия товаров
+            'номенклатура': 'наименование',
+            'название': 'наименование', 
+            'наименование_товара': 'наименование',
+            'название_товара': 'наименование',
+            'товар': 'наименование',
+            'продукт': 'наименование',
+            'изделие': 'наименование',
+            'модель': 'наименование',
+            'описание': 'наименование',
+            
+            # Артикулы и коды
+            'артикул': 'артикул',
+            'код': 'артикул',
+            'номер': 'артикул',
+            'part_number': 'артикул',
+            'partnumber': 'артикул',
+            'код_товара': 'артикул',
+            'номер_товара': 'артикул',
+            
+            # Цены
+            'цена': 'цена',
+            'стоимость': 'цена',
+            'price': 'цена',
+            'cost': 'цена',
+            'базовая_цена': 'цена',
+            'цена_руб': 'цена',
+            'цена_без_ндс': 'цена',
+            'цена_с_ндс': 'цена',
+            'розничная_цена': 'цена',
+            'оптовая_цена': 'цена',
+            
+            # Количество и единицы
+            'количество': 'количество',
+            'кол_во': 'количество',
+            'qty': 'количество',
+            'quantity': 'количество',
+            'ед': 'единица_измерения',
+            'единица': 'единица_измерения',
+            'единица_измерения': 'единица_измерения',
+            'unit': 'единица_измерения',
+            'шт': 'единица_измерения',
+            'штук': 'единица_измерения',
+            
+            # Заказы и номера
+            'заказ': 'номер_заказа',
+            'номер_заказа': 'номер_заказа',
+            'order': 'номер_заказа',
+            'order_number': 'номер_заказа',
+            
+            # Категории
+            'категория': 'категория',
+            'category': 'категория',
+            'группа': 'категория',
+            'тип': 'категория',
+            'вид': 'категория',
+            
+            # Производители
+            'производитель': 'производитель',
+            'manufacturer': 'производитель',
+            'бренд': 'производитель',
+            'марка': 'производитель',
+            'brand': 'производитель',
+            
+            # Характеристики
+            'характеристики': 'характеристики',
+            'specifications': 'характеристики',
+            'параметры': 'характеристики',
+            'свойства': 'характеристики',
+            
+            # Наличие и остатки
+            'наличие': 'наличие',
+            'остаток': 'наличие',
+            'stock': 'наличие',
+            'в_наличии': 'наличие',
+            'доступно': 'наличие',
+            
+            # Вес и размеры
+            'вес': 'вес',
+            'weight': 'вес',
+            'масса': 'вес',
+            'размер': 'размер',
+            'size': 'размер',
+            'длина': 'длина',
+            'ширина': 'ширина',
+            'высота': 'высота',
+            'диаметр': 'диаметр',
+            
+            # Цвета
+            'цвет': 'цвет',
+            'color': 'цвет',
+            'окраска': 'цвет',
+            
+            # Материалы
+            'материал': 'материал',
+            'material': 'материал',
+            'состав': 'материал',
+            
+            # Статусы
+            'статус': 'статус',
+            'status': 'статус',
+            'состояние': 'статус',
+            'condition': 'статус',
+            
+            # Склады
+            'склад': 'склад',
+            'warehouse': 'склад',
+            'место': 'склад',
+            'location': 'склад',
+            
+            # Контакты
+            'контакт': 'контакт',
+            'телефон': 'телефон',
+            'phone': 'телефон',
+            'email': 'email',
+            'почта': 'email',
+            'сайт': 'сайт',
+            'website': 'сайт',
+            'адрес': 'адрес',
+            'address': 'адрес'
+        }
+        
+        # Ищем точное совпадение
+        if normalized in synonyms_map:
+            return synonyms_map[normalized]
+        
+        # Ищем частичное совпадение
+        for key, value in synonyms_map.items():
+            if key in normalized or normalized in key:
+                return value
+        
+        # Если не найдено совпадение, возвращаем очищенное название
+        return self.clean_column_name(column_name)
+
     def detect_data_start_row(self, df):
         """Определение строки, с которой начинаются реальные данные"""
         try:
