@@ -1,0 +1,2 @@
+del db all {rm unified_pricelists.db}
+clean start c.py {python3 merge_pricelists.py}
